@@ -1,0 +1,19 @@
+⏺ This paragraph was hard-wrapped on purpose, the same way
+  Claude Code and other terminal tools break long lines at
+  the window width. Without NoMess, pasting it into Notes
+  gives you a column of short broken lines. With NoMess
+  running, it should paste as one continuous paragraph.
+
+  這段中文也是刻意用硬換行切開的，模擬終端機依視窗寬度把長句
+  子切斷的情況。沒有 NoMess 時貼上會變成好幾行短句；有
+  NoMess 時應該接回成完整的一段，而且接回的地方不會多出空白
+  。
+
+  - First list item that is long enough to be hard-wrapped
+    onto a second line by the terminal
+  - Second item stays on its own line
+
+  ```
+  let shouldStayExactlyAsIs = HardWrapCleaner.clean(text)
+  print(shouldStayExactlyAsIs)
+  ```

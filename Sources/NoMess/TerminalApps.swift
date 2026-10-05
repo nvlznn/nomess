@@ -11,6 +11,7 @@ enum TerminalApps {
         "net.kovidgoyal.kitty",
         "org.alacritty",
         "dev.warp.Warp-Stable",
+        "com.stablyai.orca",
     ]
 
     static func contains(_ bundleIdentifier: String?) -> Bool {

@@ -36,7 +36,7 @@ public enum HardWrapCleaner {
             paragraph = nil
         }
 
-        for line in lines {
+        for (index, line) in lines.enumerated() {
             if line.isFence || inFence {
                 if line.isFence { inFence.toggle() }
                 flush()
@@ -50,7 +50,9 @@ public enum HardWrapCleaner {
                 didJoin = true
             } else {
                 flush()
-                paragraph = Paragraph(line)
+                // A selection usually starts mid-line, so the first line of
+                // the copy may have lost its indent (and any "⏺ " marker).
+                paragraph = Paragraph(line, mayBeClipped: index == 0)
             }
         }
         flush()
@@ -68,9 +70,18 @@ public enum HardWrapCleaner {
         guard !prev.isBlank, !next.isBlank else { return nil }
 
         // Continuation lines line up with the paragraph's text column
-        // (e.g. two spaces under "⏺ "), or with the paragraph's own indent.
+        // (e.g. two spaces under "⏺ "), or with the paragraph's own indent,
+        // and once chosen every later continuation uses the same indent.
         let alignedUnderMarker = p.first.markerPrefixLength == next.indent
-        guard alignedUnderMarker || next.indent == p.first.indent else { return nil }
+        let clippedStart = p.continuationIndent == nil && p.mayBeClipped
+            && p.first.indent == 0 && p.first.markerPrefixLength == nil && next.indent > 0
+        if let continuationIndent = p.continuationIndent {
+            guard next.indent == continuationIndent else { return nil }
+        } else {
+            guard alignedUnderMarker || next.indent == p.first.indent || clippedStart else { return nil }
+        }
+        // The columns the selection cut off still counted toward the wrap.
+        let prevWidth = prev.width + (clippedStart ? next.indent : 0)
 
         guard !next.startsWithStructure,
               !prev.looksLikeCodeOrTable, !next.looksLikeCodeOrTable,
@@ -92,20 +103,32 @@ public enum HardWrapCleaner {
         }
 
         // The break is a wrap only if the next word would not have fit on the
-        // previous line.
-        let separator = cjkBoundary ? "" : " "
-        guard prev.width + separator.count + next.firstWordWidth > width else { return nil }
-        return separator
+        // previous line. Between two CJK characters there was no space; next
+        // to Latin text there may have been one, which the wrap swallowed.
+        let fitsWithoutSpace = prevWidth + next.firstWordWidth <= width
+        let fitsWithSpace = prevWidth + 1 + next.firstWordWidth <= width
+        let bothCJK = DisplayWidth.isCJK(prevLast) && DisplayWidth.isCJK(nextFirst)
+        if bothCJK { return fitsWithoutSpace ? nil : "" }
+        if cjkBoundary {
+            if !fitsWithoutSpace { return "" }
+            return fitsWithSpace ? nil : " "
+        }
+        return fitsWithSpace ? nil : " "
     }
 }
 
 private struct Paragraph {
     let first: Line
+    /// The first line may be missing its start because the selection began mid-line.
+    let mayBeClipped: Bool
     private(set) var last: Line
     private(set) var text: String
+    /// Indent shared by the continuation lines, fixed by the first join.
+    private(set) var continuationIndent: Int?
 
-    init(_ line: Line) {
+    init(_ line: Line, mayBeClipped: Bool) {
         first = line
+        self.mayBeClipped = mayBeClipped
         last = line
         text = line.raw
     }
@@ -113,6 +136,7 @@ private struct Paragraph {
     mutating func append(_ line: Line, separator: String) {
         text += separator + line.content
         last = line
+        if continuationIndent == nil { continuationIndent = line.indent }
     }
 }
 

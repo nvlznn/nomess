@@ -81,6 +81,23 @@ private let prose = "The pasteboard watcher only reads contents when the frontmo
         #expect(HardWrapCleaner.clean(wrapped) == "⏺ " + zh)
     }
 
+    @Test func chineseThenEnglishKeepsSwallowedSpace() {
+        // The wrap fell on the space between "有" and "NoMess".
+        let text = """
+          這段中文也是刻意用硬換行切開的，模擬終端機依視窗寬度把長句
+          子切斷的情況。沒有 NoMess 時貼上會變成好幾行短句；有
+          NoMess 時應該接回成完整的一段。
+        """
+        #expect(HardWrapCleaner.clean(text) == "  這段中文也是刻意用硬換行切開的，模擬終端機依視窗寬度把長句子切斷的情況。沒有 NoMess 時貼上會變成好幾行短句；有 NoMess 時應該接回成完整的一段。")
+    }
+
+    @Test func selectionStartedAfterMarker() {
+        // Copied from "This…", leaving "⏺ " behind; continuation lines keep their indent.
+        let wrapped = wrap(prose, width: 60, first: "⏺ ", rest: "  ")
+        let clipped = String(wrapped.dropFirst(2))
+        #expect(HardWrapCleaner.clean(clipped) == prose)
+    }
+
     @Test func headingAndQuoteAreNotSwallowed() {
         let body = wrap(prose, width: 50)
         let text = "# Notes\n" + body + "\n> quoted line that follows the paragraph"
@@ -163,6 +180,16 @@ private let prose = "The pasteboard watcher only reads contents when the frontmo
         let text = """
         The watcher polls the pasteboard change count every few hundred ms.
         Nothing is read unless the frontmost application is a terminal one.
+        """
+        #expect(HardWrapCleaner.clean(text) == nil)
+    }
+
+    @Test func unindentedLineThenIndentedBlock() {
+        // A short heading over an indented block of records is not a clipped wrap.
+        let text = """
+        Nightly build results
+          Everything passed on the first try without any retries.
+          The artifact was uploaded to the release bucket as usual.
         """
         #expect(HardWrapCleaner.clean(text) == nil)
     }

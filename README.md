@@ -2,7 +2,7 @@
 
 背景常駐的 macOS 選單列小工具：從終端機複製出來、被視窗寬度硬折行的文字，在剪貼簿裡自動接回成完整段落。規格見 [docs/SPEC.md](docs/SPEC.md)。
 
-目前是 **V0**：只處理終端機硬換行，只有一個開關。
+目前是 **V0**：處理終端機硬換行，並讓圖表貼到格式文字 App 時維持對齊；只有一個開關。
 
 ## 使用
 
@@ -14,8 +14,9 @@ open build/NoMess.app      # 選單列出現圖示，點開可切換啟用 / 結
 ## 開發
 
 ```sh
-swift test                         # 清理規則的單元測試
-pbpaste | swift run nomess-clean   # 拿剪貼簿裡的真實案例試清理結果
+swift test                                # 清理規則的單元測試
+pbpaste | swift run nomess-clean          # 拿剪貼簿裡的真實案例試清理結果
+pbpaste | swift run nomess-clean --html   # 看圖表會產生的 HTML
 ```
 
 遇到漏判或誤判時，用 `nomess-clean` 重現，再把案例加進 `Tests/NoMessCoreTests/HardWrapCleanerTests.swift`。
@@ -23,6 +24,7 @@ pbpaste | swift run nomess-clean   # 拿剪貼簿裡的真實案例試清理結�
 ## 結構
 
 - `Sources/NoMessCore/HardWrapCleaner.swift`：判斷與清理規則（純邏輯，不依賴 AppKit）
+- `Sources/NoMessCore/DiagramDetector.swift`：圖表偵測與 HTML 產生
 - `Sources/NoMess/`：選單列 app、剪貼簿監聽、終端機 App 白名單
 - `Sources/nomess-clean/`：測試用 CLI
 
@@ -40,3 +42,12 @@ pbpaste | swift run nomess-clean   # 拿剪貼簿裡的真實案例試清理結�
 - 沒有 `⏺`/`-` 這類標記可以依靠時，至少要有兩行接近右邊界，而且不在句尾＋大寫開頭的地方接
 
 中日韓文字之間接回時不插入空白；``` 圍欄內一律不動。
+
+## 圖表保持對齊
+
+框線圖、樹狀圖（`├──`）、點字圖表（braille）、ASCII/Markdown 表格，以及用空白對齊的欄位表格，偵測到時：
+
+- **純文字一個字都不改**，貼到終端機、編輯器拿到的跟原本一樣
+- 剪貼簿另外附一份 HTML：圖表包在等寬字型的 `<pre>`，其他文字是一般段落。備忘錄、Notion、Google Docs、Mail 等格式文字 App 會用這份，圖表就不會走位
+
+限制：只吃純文字的地方（Messenger、LINE 等）用的是比例字型，無法修正；圖表中有中日韓文字時，等寬字型的寬度不一定剛好是兩倍，可能仍有些微偏移。

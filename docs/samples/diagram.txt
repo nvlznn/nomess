@@ -1,0 +1,18 @@
+⏺ Here is how a copy flows through NoMess, followed by a summary table of
+  what each destination receives when you paste the result somewhere.
+
+  ┌──────────┐     ┌──────────┐     ┌──────────────┐
+  │ Terminal │ ──▶ │ NoMess   │ ──▶ │ Notes / Mail │
+  └──────────┘     └──────────┘     └──────────────┘
+        │
+        ▼
+  ┌───────────────┬──────────────────────────┐
+  │ Destination   │ What it pastes           │
+  ├───────────────┼──────────────────────────┤
+  │ Notes, Notion │ HTML, diagram monospaced │
+  │ Terminal, IDE │ plain text, unchanged    │
+  └───────────────┴──────────────────────────┘
+
+  NAME            STATUS      AGE
+  nomess-api      Running     3d
+  nomess-worker   Running     12d

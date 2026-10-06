@@ -48,12 +48,20 @@ final class PasteboardWatcher {
         let types = Set(pasteboard.types ?? [])
         guard types.isDisjoint(with: Self.ignoredTypes) else { return }
 
-        guard let text = pasteboard.string(forType: .string),
-              let cleaned = HardWrapCleaner.clean(text)
-        else { return }
+        guard let text = pasteboard.string(forType: .string) else { return }
+        let cleaned = HardWrapCleaner.clean(text)
+        let realigned = DiagramDetector.restoringClippedFirstLine(cleaned ?? text)
+        let result = realigned ?? cleaned ?? text
+        // Rich-text apps also get an HTML copy that shows diagrams in a
+        // monospaced font.
+        let diagramBlocks = DiagramDetector.blocks(result)
+        guard result != text || diagramBlocks != nil else { return }
 
         pasteboard.clearContents()
-        pasteboard.setString(cleaned, forType: .string)
+        pasteboard.setString(result, forType: .string)
+        if let diagramBlocks {
+            pasteboard.setString(RichText.html(diagramBlocks), forType: .html)
+        }
         // Our own write bumps changeCount; don't treat it as a new copy.
         lastChangeCount = pasteboard.changeCount
     }

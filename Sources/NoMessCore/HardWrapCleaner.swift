@@ -17,13 +17,22 @@ public enum HardWrapCleaner {
             .map { Line(String($0).trimmingTrailingWhitespace()) }
         guard lines.count >= 2 else { return nil }
 
-        let width = lines.map { $0.width }.max() ?? 0
+        // Estimate the wrap width from lines that could be wrapped prose.
+        // Tables, logs and code can be laid out wider than the prose (or were
+        // copied from elsewhere), and would hide every wrap if counted.
+        var proseLines: [Line] = []
+        var inFenceForWidth = false
+        for line in lines {
+            if line.isFence { inFenceForWidth.toggle(); continue }
+            if !inFenceForWidth, !line.isBlank, !line.looksLikeCodeOrTable { proseLines.append(line) }
+        }
+        let width = proseLines.map { $0.width }.max() ?? 0
         guard width >= minimumWidth else { return nil }
 
         // Without a TUI marker to go on, a single long line followed by a
         // short one is not proof of wrapping. Ask for at least two lines that
         // reach close to the right edge before trusting the edge.
-        let nearEdge = lines.filter { !$0.isBlank && $0.width >= width - wrapSlack }.count
+        let nearEdge = proseLines.filter { $0.width >= width - wrapSlack }.count
         let hasWrapEdge = nearEdge >= 2
 
         var output: [String] = []

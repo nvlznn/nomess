@@ -98,6 +98,13 @@ private let prose = "The pasteboard watcher only reads contents when the frontmo
         #expect(HardWrapCleaner.clean(clipped) == prose)
     }
 
+    @Test func widerLogLinesDoNotHideWraps() {
+        // Tool output or tables wider than the prose must not raise the wrap width.
+        let log = "  2026-10-06 09:12:01 INFO  pasteboard changed, frontmost app is Orca right now"
+        let wrapped = wrap(prose, width: 60, first: "⏺ ", rest: "  ")
+        #expect(HardWrapCleaner.clean(wrapped + "\n\n" + log) == "⏺ " + prose + "\n\n" + log)
+    }
+
     @Test func headingAndQuoteAreNotSwallowed() {
         let body = wrap(prose, width: 50)
         let text = "# Notes\n" + body + "\n> quoted line that follows the paragraph"

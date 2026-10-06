@@ -89,10 +89,17 @@ public enum DiagramDetector {
 
     /// Box drawing characters that only run sideways; they carry no
     /// information about which column a line is aligned to.
-    private static let horizontalStrokes: Set<UInt32> = [
+    static let horizontalStrokes: Set<UInt32> = [
         0x2500, 0x2501, 0x2504, 0x2505, 0x2508, 0x2509, 0x254C, 0x254D, 0x2550,
         0x2574, 0x2576, 0x2578, 0x257A, 0x257C, 0x257E,
     ]
+
+    /// Box corners, verticals and junctions, and ASCII "|" and "+".
+    static func isColumnAnchor(_ c: Character) -> Bool {
+        guard let v = c.unicodeScalars.first?.value else { return false }
+        if (0x2500...0x257F).contains(v) { return !horizontalStrokes.contains(v) }
+        return c == "|" || c == "+"
+    }
 
     /// Columns that should line up with the lines above and below: box corners,
     /// verticals and junctions, ASCII "|" and "+", and where text resumes
@@ -101,10 +108,7 @@ public enum DiagramDetector {
         var result = columnStarts(line)
         var column = 0
         for c in line {
-            if let v = c.unicodeScalars.first?.value {
-                let isBoxJoint = (0x2500...0x257F).contains(v) && !horizontalStrokes.contains(v)
-                if isBoxJoint || c == "|" || c == "+" { result.insert(column) }
-            }
+            if isColumnAnchor(c) { result.insert(column) }
             column += DisplayWidth.of(c)
         }
         return result
@@ -181,40 +185,127 @@ public enum DiagramDetector {
     }
 }
 
-/// Renders blocks as HTML for the pasteboard: prose as paragraphs, diagrams
-/// as `<pre>` so rich-text apps keep them monospaced.
+/// Renders blocks for the pasteboard in the formats destinations read.
 public enum RichText {
-    public static func html(_ blocks: [Block]) -> String {
+    /// HTML for rich-text apps. Prose keeps its lines, blank lines and inner
+    /// spacing. Drawn tables become real `<table>`s, so the app lays out the
+    /// columns itself; other diagrams go in `<pre>`, padded so their columns
+    /// survive glyphs narrower or wider than a terminal cell.
+    ///
+    /// - Parameter metrics: the monospaced font the destination shows `<pre>`
+    ///   in (Menlo for most apps; Notes uses its own monostyled font).
+    public static func html(_ blocks: [Block], metrics: GlyphMetrics) -> String {
         var body = ""
         for block in blocks {
             switch block {
             case .diagram(let diagram):
-                body += #"<pre style="font-family: Menlo, Monaco, 'Courier New', monospace; white-space: pre;">"#
-                body += escape(diagram) + "</pre>\n"
+                if let table = TableParser.parse(diagram) {
+                    body += tableHTML(table)
+                } else {
+                    body += #"<pre style="font-family: Menlo, Monaco, monospace; white-space: pre;">"#
+                        + escape(padToTerminalColumns(diagram, metrics: metrics)) + "</pre>\n"
+                }
             case .text(let text):
-                for paragraph in paragraphs(text) {
-                    body += "<p>" + paragraph.map(escape).joined(separator: "<br>") + "</p>\n"
+                for line in dedentParagraphs(text) {
+                    body += line.isEmpty ? "<div><br></div>\n" : "<div>" + keepSpaces(line) + "</div>\n"
                 }
             }
         }
         return #"<html><head><meta charset="utf-8"></head><body>"# + "\n" + body + "</body></html>"
     }
 
-    /// Groups lines into paragraphs separated by blank lines, dropping indent.
-    private static func paragraphs(_ text: String) -> [[Substring]] {
-        var result: [[Substring]] = []
-        var current: [Substring] = []
-        for line in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
-            let trimmed = line.drop(while: { $0 == " " })
-            if trimmed.isEmpty {
-                if !current.isEmpty { result.append(current) }
-                current = []
+    /// Plain text for chat apps that understand Markdown: diagrams are fenced
+    /// as code blocks so they render monospaced, prose is unchanged.
+    public static func markdown(_ blocks: [Block], metrics: GlyphMetrics) -> String {
+        blocks.map { block in
+            switch block {
+            case .text(let text): text
+            case .diagram(let diagram): "```\n" + padToTerminalColumns(diagram, metrics: metrics) + "\n```"
+            }
+        }.joined(separator: "\n")
+    }
+
+    private static func tableHTML(_ table: Table) -> String {
+        let cellStyle = #"style="border: 1px solid #999; padding: 2px 8px;""#
+        var html = #"<table style="border-collapse: collapse;">"# + "\n"
+        if let header = table.header {
+            html += "<tr>" + header.map { "<th \(cellStyle)>\(escape($0))</th>" }.joined() + "</tr>\n"
+        }
+        for row in table.rows {
+            html += "<tr>" + row.map { "<td \(cellStyle)>\(escape($0))</td>" }.joined() + "</tr>\n"
+        }
+        return html + "</table>\n"
+    }
+
+    /// Re-spaces a diagram so each column boundary (box vertical, "|", start
+    /// of a table column) lands where the terminal drew it, given how wide
+    /// each glyph really is in `metrics`. Spaces are added where glyphs came
+    /// out narrower (CJK, CJK punctuation) and removed where wider (emoji).
+    /// The fractional remainder carries over, so the error stays under half a
+    /// cell however long the row is.
+    static func padToTerminalColumns(_ diagram: String, metrics: GlyphMetrics) -> String {
+        diagram.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            var out = ""
+            var owed = 0.0 // terminal columns minus columns actually drawn so far
+            var previous: Character = " "
+            for c in line {
+                let isBoundary = DiagramDetector.isColumnAnchor(c) || (previous == " " && c != " ")
+                if isBoundary, owed >= 0.5 {
+                    let pad = Int(owed.rounded())
+                    out += String(repeating: " ", count: pad)
+                    owed -= Double(pad)
+                } else if isBoundary, owed <= -0.5 {
+                    // Keep at least one space so neighbouring text stays apart.
+                    while owed <= -0.5, out.hasSuffix("  ") {
+                        out.removeLast()
+                        owed += 1
+                    }
+                }
+                out.append(c)
+                previous = c
+                owed += Double(DisplayWidth.of(c)) - metrics.cells(c)
+            }
+            return out
+        }.joined(separator: "\n")
+    }
+
+    /// Removes each paragraph's common indent (terminal UIs indent whole
+    /// answers) but keeps indent beyond it, such as nested code.
+    private static func dedentParagraphs(_ text: String) -> [Substring] {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var result: [Substring] = []
+        var start = 0
+        while start < lines.count {
+            if lines[start].allSatisfy({ $0 == " " }) {
+                result.append("")
+                start += 1
+                continue
+            }
+            var end = start
+            while end < lines.count, !lines[end].allSatisfy({ $0 == " " }) { end += 1 }
+            let paragraph = lines[start..<end]
+            let indent = paragraph.map { $0.prefix(while: { $0 == " " }).count }.min() ?? 0
+            result += paragraph.map { $0.dropFirst(indent) }
+            start = end
+        }
+        return result
+    }
+
+    /// Escapes a line, turning leading spaces and runs of spaces into
+    /// non-breaking spaces so HTML does not collapse them.
+    private static func keepSpaces(_ line: Substring) -> String {
+        var out = ""
+        var previousWasSpace = true // a space at the start of the line is kept too
+        for c in line {
+            if c == " " {
+                out += previousWasSpace ? "&nbsp;" : " "
+                previousWasSpace = true
             } else {
-                current.append(trimmed)
+                out += escape(String(c))
+                previousWasSpace = false
             }
         }
-        if !current.isEmpty { result.append(current) }
-        return result
+        return out
     }
 
     static func escape<S: StringProtocol>(_ s: S) -> String {

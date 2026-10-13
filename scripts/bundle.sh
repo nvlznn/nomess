@@ -10,8 +10,9 @@ BIN="$(swift build -c release --show-bin-path)/NoMess"
 
 APP=build/NoMess.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/NoMess"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,6 +23,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>dev.noky.nomess</string>
     <key>CFBundleName</key>
     <string>NoMess</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>NoMess</string>
     <key>CFBundlePackageType</key>

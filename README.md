@@ -7,9 +7,14 @@
 ## 使用
 
 ```sh
-scripts/bundle.sh          # 產生 build/NoMess.app（ad-hoc 簽署，僅限本機）
-open build/NoMess.app      # 選單列出現圖示，點開可切換啟用 / 結束
+scripts/bundle.sh                  # 產生 build/NoMess.app（ad-hoc 簽署，僅限本機）
+open build/NoMess.app              # 開啟：選單列出現圖示，點開可切換啟用 / 結束
+osascript -e 'quit app "NoMess"'   # 關閉（沒反應時用 killall NoMess）
+python3 scripts/make-demo.py       # 產生測試資料 docs/samples/demo.txt
+cat docs/samples/demo.txt          # 印出測試資料
 ```
+
+印出後選取輸出、⌘C，再貼到其他 App 看結果。NoMess 只在前景 App 是終端機時才處理剪貼簿。
 
 ## 開發
 
